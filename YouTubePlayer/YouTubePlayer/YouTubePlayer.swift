@@ -202,6 +202,14 @@ open class YouTubePlayerView: UIView, UIWebViewDelegate {
         return evaluatePlayerCommand("getCurrentTime()")
     }
     
+    open func setVolume(_ volume: Int) {
+        evaluatePlayerCommand("setVolume(\(volume)")
+    }
+
+    open func getVolume() -> String {
+        return evaluatePlayerCommand("getVolume()")!
+    }
+
     // MARK: Playlist controls
     
     open func previousVideo() {
