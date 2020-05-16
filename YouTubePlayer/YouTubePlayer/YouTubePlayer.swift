@@ -133,11 +133,14 @@ open class YouTubePlayerView: UIView, WKNavigationDelegate {
     fileprivate func buildWebView(_ parameters: [String: AnyObject]) {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
-        configuration.mediaPlaybackRequiresUserAction = false
+         if #available(iOS 10.0, *) {
+            configuration.mediaTypesRequiringUserActionForPlayback = []
+         } else {
+            configuration.mediaPlaybackRequiresUserAction = false
+        }
         configuration.preferences.javaScriptEnabled = true
         
         webView = WKWebView(frame: frame, configuration: configuration)
-        webView.isOpaque = false
         webView.isOpaque = false
         webView.navigationDelegate = self
         webView.scrollView.isScrollEnabled = false
