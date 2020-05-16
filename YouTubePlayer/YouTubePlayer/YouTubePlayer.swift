@@ -6,6 +6,7 @@
 //  Copyright (c) 2014 Giles Van Gruisen. All rights reserved.
 //
 
+import Foundation
 import UIKit
 import WebKit
 
@@ -111,11 +112,13 @@ open class YouTubePlayerView: UIView, WKNavigationDelegate {
     override public init(frame: CGRect) {
         super.init(frame: frame)
         buildWebView(playerParameters())
+        registerNotifications()
     }
     
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
         buildWebView(playerParameters())
+        registerNotifications()
     }
     
     override open func layoutSubviews() {
@@ -126,14 +129,33 @@ open class YouTubePlayerView: UIView, WKNavigationDelegate {
         webView.frame = bounds
         addSubview(webView)
     }
-    
-    
+
+    fileprivate func registerNotifications() {
+        NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive),
+                                               name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(willResignActive),
+                                               name: UIApplication.willResignActiveNotification, object: nil)
+    }
+
+    @objc func willResignActive() {
+        disableIgnoreSilentSwitch(webView)
+    }
+
+    @objc func didBecomeActive() {
+        //Always creates new js Audio object to ensure the audio session behaves correctly
+        forceIgnoreSilentHardwareSwitch(webView, initialSetup: false)
+    }
+
     // MARK: Web view initialization
-    
+
     fileprivate func buildWebView(_ parameters: [String: AnyObject]) {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
-        configuration.mediaPlaybackRequiresUserAction = false
+        if #available(iOS 10.0, *) {
+            configuration.mediaTypesRequiringUserActionForPlayback = []
+        } else {
+            configuration.mediaPlaybackRequiresUserAction = false
+        }
         configuration.preferences.javaScriptEnabled = true
         
         webView = WKWebView(frame: frame, configuration: configuration)
@@ -365,7 +387,27 @@ open class YouTubePlayerView: UIView, WKNavigationDelegate {
         }
     }
     
-    
+    private func disableIgnoreSilentSwitch(_ webView: WKWebView) {
+        //Nullifying the js Audio object src is critical to restore the audio sound session to consistent state for app background/foreground cycle
+        let jsInject = "document.getElementById('wkwebviewAudio').src=null;"
+        webView.evaluateJavaScript(jsInject, completionHandler: nil)
+    }
+
+    private func forceIgnoreSilentHardwareSwitch(_ webView: WKWebView, initialSetup: Bool) {
+        //after some trial and error this seems to be minimal silence sound that still plays
+        let silenceMono56kbps100msBase64Mp3 = "data:audio/mp3;base64,//tAxAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAFAAAESAAzMzMzMzMzMzMzMzMzMzMzMzMzZmZmZmZmZmZmZmZmZmZmZmZmZmaZmZmZmZmZmZmZmZmZmZmZmZmZmczMzMzMzMzMzMzMzMzMzMzMzMzM//////////////////////////8AAAA5TEFNRTMuMTAwAZYAAAAAAAAAABQ4JAMGQgAAOAAABEhNIZS0AAAAAAD/+0DEAAPH3Yz0AAR8CPqyIEABp6AxjG/4x/XiInE4lfQDFwIIRE+uBgZoW4RL0OLMDFn6E5v+/u5ehf76bu7/6bu5+gAiIQGAABQIUJ0QolFghEn/9PhZQpcUTpXMjo0OGzRCZXyKxoIQzB2KhCtGobpT9TRVj/3Pmfp+f8X7Pu1B04sTnc3s0XhOlXoGVCMNo9X//9/r6a10TZEY5DsxqvO7mO5qFvpFCmKIjhpSItGsUYcRO//7QsQRgEiljQIAgLFJAbIhNBCa+JmorCbOi5q9nVd2dKnusTMQg4MFUlD6DQ4OFijwGAijRMfLbHG4nLVTjydyPlJTj8pfPflf9/5GD950A5e+jsrmNZSjSirjs1R7hnkia8vr//l/7Nb+crvr9Ok5ZJOylUKRxf/P9Zn0j2P4pJYXyKkeuy5wUYtdmOu6uobEtFqhIJViLEKIjGxchGev/L3Y0O3bwrIOszTBAZ7Ih28EUaSOZf/7QsQfg8fpjQIADN0JHbGgQBAZ8T//y//t/7d/2+f5m7MdCeo/9tdkMtGLbt1tqnabRroO1Qfvh20yEbei8nfDXP7btW7f9/uO9tbe5IvHQbLlxpf3DkAk0ojYcv///5/u3/7PTfGjPEPUvt5D6f+/3Lea4lz4tc4TnM/mFPrmalWbboeNiNyeyr+vufttZuvrVrt/WYv3T74JFo8qEDiJqJrmDTs///v99xDku2xG02jjunrICP/7QsQtA8kpkQAAgNMA/7FgQAGnobgfghgqA+uXwWQ3XFmGimSbe2X3ksY//KzK1a2k6cnNWOPJnPWUsYbKqkh8RJzrVf///P///////4vyhLKHLrCb5nIrYIUss4cthigL1lQ1wwNAc6C1pf1TIKRSkt+a//z+yLVcwlXKSqeSuCVQFLng2h4AFAFgTkH+Z/8jTX/zr//zsJV/5f//5UX/0ZNCNCCaf5lTCTRkaEdhNP//n/KUjf/7QsQ5AEhdiwAAjN7I6jGddBCO+WGTQ1mXrYatSAgaykxBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqg=="
+        //Plays 100ms silence once the web page has loaded through HTML5 Audio element (through Javascript)
+        //which as a side effect will switch WKWebView AudioSession to AVAudioSessionCategoryPlayback
+
+        var jsInject: String
+        if initialSetup {
+            jsInject = "var s=new Audio('\(silenceMono56kbps100msBase64Mp3)');s.id='wkwebviewAudio';s.controls=false;s.loop=true;s.play();document.body.appendChild(s)"
+        } else {
+            jsInject = "var s=document.getElementById('wkwebviewAudio');s.src=null;s.parentNode.removeChild(s);s=null;s=new Audio('\(silenceMono56kbps100msBase64Mp3)');s.id='wkwebviewAudio';s.controls=false;s.loop=true;s.play();document.body.appendChild(s)"
+        }
+        webView.evaluateJavaScript(jsInject, completionHandler: nil)
+    }
+
     // MARK: WKNavigationDelegate
     open func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         var action: WKNavigationActionPolicy?
@@ -379,6 +421,13 @@ open class YouTubePlayerView: UIView, WKNavigationDelegate {
             handleJSEvent(url)
             action = .cancel
         }
+        //As a result the WKWebView ignores the silent switch
+        forceIgnoreSilentHardwareSwitch(webView, initialSetup: true)
+    }
+
+    open func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        //As a result the WKWebView ignores the silent switch
+        forceIgnoreSilentHardwareSwitch(webView, initialSetup: true)
     }
 }
 
